@@ -1,0 +1,34 @@
+# VoAIs Indic Calling Agent
+Region: asia-south1 (Mumbai)
+GPU zone: asia-south1-c  (G4 sirf isi zone me hai)
+
+## Nodes
+- A: g4-standard-48, 1x NVIDIA RTX PRO 6000 Blackwell 96GB, no public IP.
+  Ek hi node, A1+A2 dono replace karta hai.
+    Gemma-4-E4B-it-qat (ya 12B)  -> port 8000
+      audio seedha leta hai, alag STT ki zaroorat nahi
+    IndicF5 TTS                  -> port 8002   (11 Indian langs)
+    IndicConformer STT           -> port 8001   (fallback, agar Gemma ka
+                                   Tamil/Telugu ASR kamzor nikla)
+    Human-1 (VoiceArena)         -> port 8003   (experimental, Hindi S2S)
+      co-loaded rahega, production traffic nahi
+
+  VRAM: Gemma ~11.5 + IndicF5 1.4 + Human-1 31 = ~44 GB / 96 GB
+
+- B: e2-standard-4, public static IP.
+  Chalega: Asterisk + Node orchestrator + VoAIs app.
+
+## Network
+Ek VPC, asia-south1. A private only.
+Sirf B usse baat karega, ports 8000-8003 pe.
+
+## Latency target
+Cascade on G4: ~570 ms   (11 languages, tools chalte hain)   <- production
+Human-1 + LLM parallel: ~400 ms  (Hindi only)                 <- baad me
+Human-1 akela: ~300 ms   (Hindi, no tools)                    <- experiment
+
+## Hatae gaye (kyun)
+- L4 24GB          : 300 GB/s bandwidth bottleneck, decode dhima
+- T4 node          : alag STT node ki zaroorat nahi, Gemma audio khud leta hai
+- Qwen3.6-35B-A3B  : 25.5 GB AWQ, audio input nahi, 4 stage wapas aa jate
+- Magpie TTS       : 12 langs me sirf Hindi Indian hai

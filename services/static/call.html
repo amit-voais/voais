@@ -1,0 +1,254 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>VoAIs call</title>
+<style>
+  :root{--bg:#0f1113;--fg:#e8e6e3;--mut:#8b8983;--line:#2a2d30;--ok:#4ade80;--bad:#f87171;--acc:#60a5fa;--warm:#fbbf24}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+  .wrap{max-width:640px;margin:0 auto;padding:20px 16px 60px}
+  h1{font-size:19px;font-weight:500;margin:0 0 2px}
+  .sub{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .card{border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+  input,button{font:inherit;border-radius:10px;border:1px solid var(--line);background:#16191c;color:var(--fg);padding:12px 16px}
+  button{cursor:pointer;border-color:#3a3f44}
+  button:active{transform:scale(.98)}
+  button:disabled{opacity:.4}
+  .big{width:100%;padding:18px;font-size:17px;font-weight:500;border:none}
+  .start{background:#166534;color:#dcfce7}
+  .end{background:#991b1b;color:#fee2e2}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .state{display:flex;align-items:center;gap:10px;font-size:15px;margin-bottom:14px}
+  .orb{width:14px;height:14px;border-radius:50%;background:#3a3f44;flex:none}
+  .orb.listen{background:var(--ok);animation:p 1.4s ease-in-out infinite}
+  .orb.speech{background:var(--warm)}
+  .orb.think{background:var(--acc);animation:p .8s ease-in-out infinite}
+  .orb.talk{background:#a855f7;animation:p 1s ease-in-out infinite}
+  @keyframes p{0%,100%{opacity:1}50%{opacity:.35}}
+  .meter{height:5px;background:#16191c;border-radius:3px;overflow:hidden;margin-bottom:14px}
+  .meter i{display:block;height:100%;width:0;background:var(--ok);transition:width .08s}
+  .msg{padding:10px 14px;border-radius:12px;margin-bottom:8px;max-width:85%;white-space:pre-wrap;font-size:15px}
+  .me{background:#1e3a5f;margin-left:auto;border-bottom-right-radius:4px}
+  .ag{background:#1c1f23;border-bottom-left-radius:4px}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--mut)}
+  .chip{background:#16191c;padding:5px 10px;border-radius:20px}
+  .chip b{color:var(--acc);font-weight:500;font-variant-numeric:tabular-nums}
+  .lbl{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+  .hide{display:none}
+  .err{color:var(--bad);font-size:13px}
+  .log{font:11px/1.5 ui-monospace,Menlo,monospace;color:var(--mut);max-height:120px;overflow-y:auto}
+</style>
+<div class="wrap">
+  <h1>VoAIs</h1>
+  <div class="sub">Hindi voice agent &middot; bolo, ruk jao, jawab aayega</div>
+
+  <div class="card" id="auth">
+    <div class="lbl">Password</div>
+    <div class="row">
+      <input type="password" id="pw" placeholder="password" style="flex:1;min-width:180px">
+      <button id="go">Unlock</button>
+    </div>
+    <div id="autherr" class="err" style="margin-top:8px"></div>
+  </div>
+
+  <div id="main" class="hide">
+    <div class="card">
+      <div class="state"><span class="orb" id="orb"></span><span id="stateTxt">Ready</span></div>
+      <div class="meter"><i id="lvl"></i></div>
+      <button class="big start" id="btn">Start call</button>
+      <div class="row" style="margin-top:12px;gap:8px;align-items:center">
+        <span style="color:var(--mut);font-size:13px">Voice quality</span>
+        <select id="nfe" style="flex:1;padding:9px 12px">
+          <option value="4">Fastest (roughest)</option>
+          <option value="8" selected>Fast</option>
+          <option value="16">Balanced</option>
+          <option value="24">Smooth</option>
+          <option value="32">Best (slowest)</option>
+        </select>
+      </div>
+      <div class="chips" style="margin-top:12px">
+        <span class="chip">endpoint <b id="c_vad">&mdash;</b></span>
+        <span class="chip">wait <b id="c_wait">&mdash;</b></span>
+        <span class="chip">stt <b id="c_stt">&mdash;</b></span>
+        <span class="chip">ttft <b id="c_ttft">&mdash;</b></span>
+        <span class="chip">tts <b id="c_tts">&mdash;</b></span>
+        <span class="chip" id="svc"></span>
+      </div>
+    </div>
+
+    <div class="card" id="conv" style="min-height:120px"><div class="lbl">Conversation</div><div id="msgs"></div></div>
+
+    <div class="card">
+      <button id="dl" disabled style="width:100%">Download call recording (.wav)</button>
+      <div class="log" id="log" style="margin-top:12px"></div>
+    </div>
+  </div>
+</div>
+<audio id="player" playsinline></audio>
+<script>
+const $=i=>document.getElementById(i);
+let TOKEN=null, CALL=null, live=false, ctx=null, stream=null, rec=null, chunks=[], audioReady=false;
+let analyser=null, raf=null, speaking=false, silence=0, spoke=0, busy=false;
+
+// SILENCE_MS is pure dead time on every turn - the caller has already stopped
+// talking and is waiting. 400 ms still reliably separates a sentence boundary
+// from a mid-sentence pause; below ~300 ms the agent starts interrupting.
+const VAD_ON=0.020, VAD_OFF=0.012, SILENCE_MS=400, MIN_SPEECH_MS=300;
+const log=(m,c)=>{const d=document.createElement('div');if(c)d.className=c;d.textContent=m;$('log').prepend(d)};
+const setState=(cls,txt)=>{$('orb').className='orb '+cls;$('stateTxt').textContent=txt};
+const ms=v=>v==null?'—':v+'ms';
+
+$('go').onclick=async()=>{
+  const fd=new FormData(); fd.append('password',$('pw').value);
+  let r; try{r=await fetch('/api/login',{method:'POST',body:fd})}catch(e){$('autherr').textContent='Network: '+e.message;return}
+  if(!r.ok){$('autherr').textContent='Wrong password';return}
+  TOKEN=(await r.json()).token;
+  $('auth').classList.add('hide'); $('main').classList.remove('hide');
+  const h=await(await fetch('/api/health')).json();
+  $('svc').innerHTML=Object.entries(h).map(([k,v])=>`${k}:${v?'✓':'✗'}`).join(' ');
+  if(!h.tts) log('TTS offline - text only, koi awaaz nahi aayegi','err');
+};
+$('pw').onkeydown=e=>{if(e.key==='Enter')$('go').click()};
+
+function pickMime(){
+  for(const t of ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/aac','']){
+    if(t===''||(window.MediaRecorder&&MediaRecorder.isTypeSupported(t)))return t}
+  return '';
+}
+
+$('btn').onclick=()=>live?endCall():startCall();
+
+async function startCall(){
+  try{ stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}}); }
+  catch(e){ log('Mic blocked: '+e.name,'err'); return }
+  const fd=new FormData(); fd.append('token',TOKEN);
+  CALL=(await(await fetch('/api/call/start',{method:'POST',body:fd})).json()).call_id;
+  ctx=new (window.AudioContext||window.webkitAudioContext)();
+  if(ctx.state==='suspended') await ctx.resume();
+  audioReady = ctx.state==='running';
+  log('audio context: '+ctx.state+(audioReady?' ✓':' — awaaz nahi aayegi'));
+  const src=ctx.createMediaStreamSource(stream);
+  analyser=ctx.createAnalyser(); analyser.fftSize=1024; src.connect(analyser);
+  live=true; $('btn').textContent='End call'; $('btn').className='big end';
+  $('dl').disabled=false;
+  log('call '+CALL+' started');
+  armRecorder(); loop();
+}
+
+function armRecorder(){
+  const m=pickMime();
+  rec = m? new MediaRecorder(stream,{mimeType:m}) : new MediaRecorder(stream);
+  chunks=[];
+  rec.ondataavailable=e=>{ if(e.data&&e.data.size>0) chunks.push(e.data) };
+  rec.onstop=()=>{
+    const b=new Blob(chunks,{type:rec.mimeType||'audio/webm'}); chunks=[];
+    if(b.size>2000 && live) sendTurn(b); else if(live) resume();
+  };
+  rec.start();
+}
+
+function loop(){
+  if(!live) return;
+  const buf=new Float32Array(analyser.fftSize);
+  analyser.getFloatTimeDomainData(buf);
+  let s=0; for(let i=0;i<buf.length;i++) s+=buf[i]*buf[i];
+  const rms=Math.sqrt(s/buf.length);
+  $('lvl').style.width=Math.min(100,rms*900)+'%';
+  if(!busy){
+    if(!speaking && rms>VAD_ON){ speaking=true; spoke=performance.now(); silence=0; setState('speech','Sun raha hoon…') }
+    else if(speaking){
+      if(rms<VAD_OFF){
+        if(!silence) silence=performance.now();
+        else if(performance.now()-silence>SILENCE_MS){
+          const dur=silence-spoke;
+          speaking=false; silence=0;
+          if(dur>MIN_SPEECH_MS){ busy=true; $('c_vad').textContent=SILENCE_MS+'ms';
+            setState('think','Soch raha hoon…'); try{rec.stop()}catch(e){} }
+        }
+      } else silence=0;
+    } else setState('listen','Boliye…');
+  }
+  raf=requestAnimationFrame(loop);
+}
+
+function resume(){ busy=false; speaking=false; silence=0; if(live){ armRecorder(); setState('listen','Boliye…') } }
+
+async function sendTurn(blob){
+  const fd=new FormData();
+  fd.append('token',TOKEN); fd.append('call_id',CALL); fd.append('tts','1');
+  fd.append('nfe',$('nfe').value);
+  fd.append('file',blob,'t.webm');
+  let r; try{ r=await fetch('/api/call/turn',{method:'POST',body:fd}) }
+  catch(e){ log('send failed: '+e.message,'err'); resume(); return }
+  const rd=r.body.getReader(), dec=new TextDecoder(); let buf='', node=null, stt=null;
+  const q=[]; let playing=false;
+  async function drain(){
+    if(playing) return; playing=true;
+    while(q.length){ await play(q.shift()) }
+    playing=false;
+  }
+  while(true){
+    const {done,value}=await rd.read(); if(done)break;
+    buf+=dec.decode(value,{stream:true});
+    const parts=buf.split('\n\n'); buf=parts.pop();
+    for(const p of parts){
+      if(!p.startsWith('data: '))continue;
+      const e=JSON.parse(p.slice(6));
+      if(e.stage==='skip'){ log('skipped: '+e.reason); resume(); return }
+      else if(e.stage==='stt'){ stt=e.ms; $('c_stt').textContent=ms(e.ms); addMsg('me',e.text) }
+      else if(e.stage==='ttft'){ $('c_ttft').textContent=ms(e.ms); $('c_wait').textContent=ms(e.wait_ms);
+        node=addMsg('ag',''); setState('talk','Bol raha hoon…') }
+      else if(e.stage==='token'){ if(node) node.textContent+=e.text; scroll() }
+      else if(e.stage==='tts_first'){ $('c_tts').textContent=ms(e.ms); log('first audio '+e.ms+'ms') }
+      else if(e.stage==='tts_chunk'){ log('audio chunk '+e.i+' ('+Math.round(e.audio.length/1400)+'KB)'); q.push(e.audio); drain() }
+      else if(e.stage==='tts'){ log('tts all '+e.ms+'ms (first '+e.first_ms+'ms)') }
+      else if(e.stage==='tts_error'){ $('c_tts').textContent='fail'; log('tts: '+e.error,'err') }
+      else if(e.stage==='error'){ log('error: '+e.error,'err') }
+    }
+  }
+  while(q.length||playing) await new Promise(r=>setTimeout(r,60));
+  resume();
+}
+
+function b64ToBuf(b64){
+  const bin=atob(b64); const out=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i);
+  return out.buffer;
+}
+
+async function play(b64){
+  // Play through the AudioContext, not an <audio> element. The context is
+  // created and resumed inside the Start-call tap (it already drives the VAD),
+  // so it counts as user-activated and mobile will not block it. HTMLAudioElement
+  // autoplay rules do not apply here at all, which is what kept failing with
+  // NotAllowedError.
+  if(!ctx) return;
+  if(ctx.state==='suspended'){ try{ await ctx.resume() }catch(e){} }
+  let buf;
+  try{ buf = await ctx.decodeAudioData(b64ToBuf(b64)); }
+  catch(e){ log('decode failed: '+e.message,'err'); return }
+  return new Promise(res=>{
+    const src=ctx.createBufferSource();
+    src.buffer=buf; src.connect(ctx.destination);
+    src.onended=()=>res();
+    try{ src.start(0); }catch(e){ log('start failed: '+e.message,'err'); res() }
+    setTimeout(res, (buf.duration*1000)+2000);
+  });
+}
+function addMsg(cls,txt){ const d=document.createElement('div'); d.className='msg '+cls; d.textContent=txt; $('msgs').appendChild(d); scroll(); return d }
+function scroll(){ window.scrollTo(0,document.body.scrollHeight) }
+
+function endCall(){
+  live=false; if(raf)cancelAnimationFrame(raf);
+  try{ if(rec&&rec.state!=='inactive') rec.stop() }catch(e){}
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  if(ctx) ctx.close();
+  $('btn').textContent='Start call'; $('btn').className='big start';
+  setState('','Call ended'); log('call ended');
+}
+
+$('dl').onclick=()=>{
+  if(!CALL) return;
+  window.location=`/api/call/recording?token=${encodeURIComponent(TOKEN)}&call_id=${CALL}`;
+};
+</script>

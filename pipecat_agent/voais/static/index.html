@@ -1,0 +1,76 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VoAIs · Pipecat</title>
+<style>
+  :root{--bg:#0f1113;--fg:#e8e6e3;--mut:#8b8983;--line:#2a2d30;--ok:#4ade80;--bad:#f87171;--acc:#60a5fa}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+  .wrap{max-width:600px;margin:0 auto;padding:28px 18px}
+  h1{font-size:20px;font-weight:500;margin:0 0 2px}
+  .sub{color:var(--mut);font-size:13px;margin-bottom:22px}
+  .card{border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:14px}
+  button{font:inherit;width:100%;padding:18px;font-size:17px;font-weight:500;border:none;border-radius:10px;cursor:pointer}
+  .start{background:#166534;color:#dcfce7}
+  .end{background:#991b1b;color:#fee2e2}
+  .state{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .orb{width:12px;height:12px;border-radius:50%;background:#3a3f44}
+  .orb.on{background:var(--ok);animation:p 1.4s ease-in-out infinite}
+  @keyframes p{0%,100%{opacity:1}50%{opacity:.35}}
+  .log{font:12px/1.5 ui-monospace,Menlo,monospace;color:var(--mut);max-height:240px;overflow-y:auto;white-space:pre-wrap}
+  .err{color:var(--bad)}
+</style>
+<div class="wrap">
+  <h1>VoAIs</h1>
+  <div class="sub">Pipecat &middot; Gemma-4 &rarr; IndicF5 &middot; barge-in enabled</div>
+  <div class="card">
+    <div class="state"><span class="orb" id="orb"></span><span id="st">Ready</span></div>
+    <button id="btn" class="start">Start call</button>
+  </div>
+  <div class="card"><div class="log" id="log"></div></div>
+</div>
+<audio id="audio" autoplay playsinline></audio>
+<script>
+const $=i=>document.getElementById(i);
+const log=(m,c)=>{const d=document.createElement('div');if(c)d.className=c;d.textContent=m;$('log').prepend(d)};
+let pc=null, stream=null, pcId=null;
+
+$('btn').onclick=()=>pc?stop():start();
+
+async function start(){
+  try{
+    // getUserMedia inside the click doubles as the audio-unlock gesture, so
+    // WebRTC playback is never blocked the way an <audio> element would be.
+    stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+  }catch(e){ log('mic blocked: '+e.name,'err'); return }
+
+  pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+  stream.getTracks().forEach(t=>pc.addTrack(t,stream));
+  pc.addTransceiver('audio',{direction:'recvonly'});
+  pc.ontrack=e=>{ $('audio').srcObject=e.streams[0]; log('agent audio track connected') };
+  pc.onconnectionstatechange=()=>{
+    log('peer: '+pc.connectionState);
+    const up=pc.connectionState==='connected';
+    $('orb').className='orb'+(up?' on':''); $('st').textContent=up?'Connected — boliye':pc.connectionState;
+  };
+
+  const offer=await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await new Promise(r=>{ if(pc.iceGatheringState==='complete')return r();
+    pc.onicegatheringstatechange=()=>pc.iceGatheringState==='complete'&&r(); setTimeout(r,2000) });
+
+  const res=await fetch('/api/offer',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({sdp:pc.localDescription.sdp,type:pc.localDescription.type,pc_id:pcId})});
+  const ans=await res.json(); pcId=ans.pc_id;
+  await pc.setRemoteDescription(ans);
+  $('btn').textContent='End call'; $('btn').className='end';
+  log('connecting…');
+}
+
+function stop(){
+  if(pc){pc.close();pc=null}
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
+  $('btn').textContent='Start call'; $('btn').className='start';
+  $('orb').className='orb'; $('st').textContent='Ready'; log('call ended');
+}
+</script>

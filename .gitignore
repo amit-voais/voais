@@ -1,0 +1,32 @@
+# secrets - .env carries HF_TOKEN
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+.test_password
+*.key
+*credentials*.json
+
+# voice data - real recordings of real people, never publish
+recordings/
+voais_final/recordings/
+*.wav
+*.m4a
+*.mp3
+!refs/README.md
+
+# archives and model weights
+*.tgz
+*.zip
+models/
+voais_final/
+voais_package/
+
+# python
+__pycache__/
+*.pyc
+.venv*/
+.DS_Store
+**/.DS_Store

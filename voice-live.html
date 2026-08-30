@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VoAIs — Live Voice Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0e1116; --surface:#161b23; --surface-2:#1d232d; --line:#262d39;
+  --text:#e6e9ef; --muted:#8b94a3;
+  --signal:#ffb020; --listen:#35d0ba; --speak:#e0559b; --think:#7c8cf8;
+  --ok:#35d0ba; --warn:#ffb020; --bad:#f2555a;
+  --radius:14px; --radius-sm:9px;
+  --shadow:0 8px 30px rgba(0,0,0,.35);
+  --font:"Ubuntu",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+[data-theme="light"]{
+  --ink:#f2f4f7; --surface:#ffffff; --surface-2:#f6f8fa; --line:#e1e6ec;
+  --text:#131720; --muted:#606b7b;
+  --signal:#c97a00; --listen:#0f9b8a; --speak:#c02f76; --think:#4557d6;
+  --ok:#0f9b8a; --warn:#c97a00; --bad:#d0353a;
+  --shadow:0 8px 30px rgba(16,24,40,.08);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  margin:0;background:var(--ink);color:var(--text);font-family:var(--font);
+  font-size:15px;line-height:1.5;overscroll-behavior:none;
+  display:flex;flex-direction:column;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+.icon{width:18px;height:18px;display:block;flex:none}
+
+/* ---------- header ---------- */
+header{
+  display:flex;align-items:center;gap:10px;padding:12px 14px;
+  padding-top:calc(12px + env(safe-area-inset-top));
+  border-bottom:1px solid var(--line);background:var(--surface);
+}
+.brand{display:flex;align-items:center;gap:9px;min-width:0}
+.brand b{font-weight:700;font-size:15px;letter-spacing:-.01em;white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+.dot.live{background:var(--ok);box-shadow:0 0 0 0 var(--ok);animation:pulse 2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(53,208,186,.5)}70%{box-shadow:0 0 0 7px rgba(53,208,186,0)}100%{box-shadow:0 0 0 0 rgba(53,208,186,0)}}
+.spacer{flex:1}
+.ghost{
+  background:transparent;border:1px solid var(--line);border-radius:10px;
+  width:36px;height:36px;display:grid;place-items:center;cursor:pointer;color:var(--muted);
+}
+.ghost:hover{color:var(--text);border-color:var(--muted)}
+.ghost:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+
+/* ---------- signal chain (signature) ---------- */
+.chain{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:6px;
+  padding:10px 14px;background:var(--surface);border-bottom:1px solid var(--line);
+}
+.stage{
+  position:relative;border:1px solid var(--line);border-radius:var(--radius-sm);
+  padding:8px 6px 7px;text-align:center;background:var(--surface-2);
+  transition:border-color .2s,background .2s,transform .2s;
+}
+.stage .lbl{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.stage .ms{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--muted);margin-top:2px}
+.stage svg{margin:0 auto 3px;color:var(--muted)}
+.stage[data-on="1"]{transform:translateY(-2px)}
+.stage[data-on="1"] svg,.stage[data-on="1"] .lbl{color:var(--c)}
+.stage[data-on="1"]{border-color:var(--c);background:color-mix(in srgb,var(--c) 12%,transparent)}
+.stage[data-done="1"] .ms{color:var(--text)}
+.stage:nth-child(1){--c:var(--listen)}
+.stage:nth-child(2){--c:var(--signal)}
+.stage:nth-child(3){--c:var(--think)}
+.stage:nth-child(4){--c:var(--speak)}
+
+/* ---------- tabs (mobile) ---------- */
+.tabs{display:flex;gap:4px;padding:10px 14px 0}
+.tab{
+  flex:1;padding:9px;border:1px solid var(--line);background:var(--surface);
+  border-radius:10px;color:var(--muted);font-size:13px;font-weight:500;cursor:pointer;
+}
+.tab[aria-selected="true"]{background:var(--surface-2);color:var(--text);border-color:var(--muted)}
+
+/* ---------- panes ---------- */
+main{flex:1;min-height:0;display:grid;grid-template-columns:1fr;position:relative}
+.pane{overflow-y:auto;padding:14px;-webkit-overflow-scrolling:touch}
+.pane[hidden]{display:none}
+
+/* chat */
+.msg{margin-bottom:12px;display:flex;flex-direction:column;max-width:88%}
+.msg.you{margin-left:auto;align-items:flex-end}
+.who{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;font-weight:500}
+.bubble{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  padding:10px 13px;white-space:pre-wrap;word-break:break-word;
+}
+.msg.you .bubble{border-color:color-mix(in srgb,var(--listen) 40%,var(--line));background:color-mix(in srgb,var(--listen) 8%,var(--surface))}
+.msg.bot .bubble{border-color:color-mix(in srgb,var(--think) 35%,var(--line))}
+.bubble.interim{color:var(--muted);font-style:italic;border-style:dashed}
+.cursor{display:inline-block;width:7px;height:15px;background:var(--think);vertical-align:-2px;animation:blink .9s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+.empty{color:var(--muted);text-align:center;padding:40px 20px;font-size:14px}
+.empty svg{width:34px;height:34px;margin:0 auto 12px;color:var(--line)}
+
+/* pipeline */
+.turn{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);margin-bottom:12px;overflow:hidden}
+.turn-head{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.turn-no{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.total{margin-left:auto;font-family:var(--mono);font-size:13px;font-weight:600}
+.total.ok{color:var(--ok)}.total.warn{color:var(--warn)}.total.bad{color:var(--bad)}
+.turn-body{padding:11px 12px}
+.row{display:flex;align-items:baseline;gap:8px;font-size:12.5px;padding:3px 0}
+.row .k{color:var(--muted);width:96px;flex:none;font-size:11px;letter-spacing:.05em;text-transform:uppercase}
+.row .v{font-family:var(--mono);font-size:12px}
+.row .t{color:var(--muted);word-break:break-word;font-family:var(--font);font-size:13px}
+.bar{display:flex;height:8px;border-radius:99px;overflow:hidden;margin:10px 0 6px;background:var(--surface-2)}
+.bar i{display:block;transition:width .3s}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:10.5px;color:var(--muted)}
+.legend span{display:flex;align-items:center;gap:4px}
+.sw{width:8px;height:8px;border-radius:2px}
+
+/* ---------- dock ---------- */
+.dock{
+  border-top:1px solid var(--line);background:var(--surface);
+  padding:10px 14px calc(12px + env(safe-area-inset-bottom));
+  display:flex;align-items:center;gap:10px;
+}
+.field{
+  flex:1;display:flex;align-items:center;gap:8px;background:var(--surface-2);
+  border:1px solid var(--line);border-radius:12px;padding:0 6px 0 12px;
+}
+.field input{flex:1;background:none;border:0;outline:none;padding:11px 0;font-size:14px;min-width:0}
+.send{background:none;border:0;padding:7px;border-radius:8px;cursor:pointer;color:var(--muted)}
+.send:hover{color:var(--signal)}
+.mic{
+  width:54px;height:54px;flex:none;border-radius:50%;border:1px solid var(--line);
+  background:var(--surface-2);color:var(--text);display:grid;place-items:center;cursor:pointer;
+  transition:transform .15s,background .2s,border-color .2s;position:relative;
+}
+.mic:active{transform:scale(.94)}
+.mic .icon{width:22px;height:22px}
+.mic[data-state="listening"]{background:var(--listen);border-color:var(--listen);color:#04211d}
+.mic[data-state="listening"]::after{
+  content:"";position:absolute;inset:-6px;border-radius:50%;border:2px solid var(--listen);
+  animation:ring 1.4s ease-out infinite;
+}
+@keyframes ring{0%{transform:scale(.9);opacity:.7}100%{transform:scale(1.35);opacity:0}}
+.mic[data-state="speaking"]{background:var(--speak);border-color:var(--speak);color:#2a0416}
+.mic[data-state="thinking"]{border-color:var(--think);color:var(--think)}
+.mic[disabled]{opacity:.5;cursor:not-allowed}
+.meter{display:flex;align-items:flex-end;gap:2px;height:22px;width:34px;flex:none}
+.meter i{flex:1;background:var(--listen);border-radius:1px;height:15%;transition:height .09s linear}
+
+/* ---------- settings ---------- */
+.sheet{
+  position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;z-index:40;
+  align-items:flex-end;justify-content:center;
+}
+.sheet.open{display:flex}
+.sheet-in{
+  background:var(--surface);width:100%;max-width:520px;border-radius:18px 18px 0 0;
+  border:1px solid var(--line);padding:16px 16px calc(20px + env(safe-area-inset-bottom));
+  max-height:88vh;overflow-y:auto;box-shadow:var(--shadow);
+}
+.sheet h2{margin:0 0 14px;font-size:16px;font-weight:700}
+label.f{display:block;margin-bottom:12px}
+label.f span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+label.f input,label.f select,label.f textarea{
+  width:100%;background:var(--surface-2);border:1px solid var(--line);
+  border-radius:10px;padding:10px 12px;outline:none;font-size:14px;
+}
+label.f textarea{resize:vertical;min-height:64px;font-size:13px}
+label.f input:focus,label.f select:focus,label.f textarea:focus{border-color:var(--signal)}
+.check{display:flex;align-items:center;gap:9px;margin-bottom:14px;font-size:14px;cursor:pointer}
+.check input{width:18px;height:18px;accent-color:var(--signal)}
+.hint{font-size:12px;color:var(--muted);margin:-6px 0 14px;line-height:1.45}
+.primary{
+  width:100%;padding:12px;border:0;border-radius:11px;background:var(--signal);
+  color:#1a1200;font-weight:700;cursor:pointer;font-size:15px;
+}
+[data-theme="light"] .primary{color:#fff}
+.toast{
+  position:fixed;left:50%;transform:translateX(-50%);bottom:96px;z-index:60;
+  background:var(--surface-2);border:1px solid var(--line);color:var(--text);
+  padding:9px 14px;border-radius:99px;font-size:13px;box-shadow:var(--shadow);
+  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+
+@media (min-width:900px){
+  .tabs{display:none}
+  main{grid-template-columns:1.15fr .85fr}
+  .pane[hidden]{display:block}
+  #pipe{border-left:1px solid var(--line)}
+  body{font-size:15px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <span class="dot" id="dot"></span>
+  <div class="brand"><b>VoAIs Console</b></div>
+  <span class="spacer"></span>
+  <button class="ghost" id="themeBtn" aria-label="Switch theme">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path id="themeIcon" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+  </button>
+  <button class="ghost" id="cfgBtn" aria-label="Settings">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
+  </button>
+</header>
+
+<div class="chain">
+  <div class="stage" id="st-listen"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/></svg><div class="lbl">Sunna</div><div class="ms" id="ms-listen">--</div></div>
+  <div class="stage" id="st-stt"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7V5h16v2M9 19h6M12 5v14"/></svg><div class="lbl">Text</div><div class="ms" id="ms-stt">--</div></div>
+  <div class="stage" id="st-llm"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3a4 4 0 0 0-4 4 3 3 0 0 0-1 5.8V16a3 3 0 0 0 5 2.2A3 3 0 0 0 17 16v-3.2A3 3 0 0 0 16 7a4 4 0 0 0-4-4z"/><path d="M12 8v10"/></svg><div class="lbl">Soch</div><div class="ms" id="ms-llm">--</div></div>
+  <div class="stage" id="st-tts"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/></svg><div class="lbl">Bolna</div><div class="ms" id="ms-tts">--</div></div>
+</div>
+
+<div class="tabs" role="tablist">
+  <button class="tab" id="tab-chat" role="tab" aria-selected="true" aria-controls="chat">Baat-cheet</button>
+  <button class="tab" id="tab-pipe" role="tab" aria-selected="false" aria-controls="pipe">Latency</button>
+</div>
+
+<main>
+  <section class="pane" id="chat" role="tabpanel">
+    <div class="empty" id="chatEmpty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/></svg>
+      Mic dabaiye aur boliye. Har turn ki timing Latency tab mein aati rahegi.
+    </div>
+  </section>
+
+  <section class="pane" id="pipe" role="tabpanel" hidden>
+    <div class="empty" id="pipeEmpty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 12h3l3 8 6-16 3 8h3"/></svg>
+      Abhi koi turn record nahi hua.
+    </div>
+  </section>
+</main>
+
+<div class="dock">
+  <div class="meter" id="meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="field">
+    <input id="typed" type="text" placeholder="Ya type karke bhejiye" autocomplete="off">
+    <button class="send" id="sendBtn" aria-label="Send">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></svg>
+    </button>
+  </div>
+  <button class="mic" id="mic" data-state="idle" aria-label="Start listening">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/></svg>
+  </button>
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="sheet-in">
+    <h2>Settings</h2>
+    <label class="check"><input type="checkbox" id="cfgDemo"> Demo mode (bina backend ke chalao)</label>
+    <p class="hint">Demo mode off karne par neeche wala OpenAI-compatible endpoint use hoga, streaming ke saath.</p>
+    <label class="f"><span>Endpoint</span><input id="cfgUrl" type="url" placeholder="https://api.hidrogen.in/v1/chat/completions"></label>
+    <label class="f"><span>Model</span><input id="cfgModel" type="text" placeholder="hidrogen-fast"></label>
+    <label class="f"><span>API key (optional)</span><input id="cfgKey" type="password" placeholder="sk-..."></label>
+    <label class="f"><span>System prompt</span><textarea id="cfgSys"></textarea></label>
+    <label class="f"><span>Bhasha</span>
+      <select id="cfgLang">
+        <option value="hi-IN">Hindi (hi-IN)</option>
+        <option value="en-IN">English India (en-IN)</option>
+        <option value="en-US">English US (en-US)</option>
+        <option value="mr-IN">Marathi (mr-IN)</option>
+        <option value="bn-IN">Bengali (bn-IN)</option>
+        <option value="ta-IN">Tamil (ta-IN)</option>
+      </select>
+    </label>
+    <label class="f"><span>Awaaz</span><select id="cfgVoice"></select></label>
+    <label class="check"><input type="checkbox" id="cfgHands" checked> Hands-free: bolne ke baad mic khud on</label>
+    <label class="check"><input type="checkbox" id="cfgChunk" checked> Pehla vaakya aate hi bolna shuru (kam latency)</label>
+    <button class="primary" id="cfgSave">Save</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ---------- storage with in-memory fallback ---------- */
+const mem = {};
+const store = {
+  get(k){ try{ const v = localStorage.getItem(k); return v === null ? (k in mem ? mem[k] : null) : v; }catch(e){ return k in mem ? mem[k] : null; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){ mem[k] = v; } }
+};
+
+const $ = id => document.getElementById(id);
+const now = () => performance.now();
+
+/* ---------- config ---------- */
+const cfg = {
+  demo:  store.get("v_demo") === "1",
+  url:   store.get("v_url")   || (location.origin + "/v1/chat/completions"),
+  model: store.get("v_model") || "voais-llm",
+  key:   store.get("v_key")   || "",
+  sys:   store.get("v_sys")   || "Aap VoAIs ke call center agent hain. Jawab HAMESHA Devanagari lipi mein likhiye - Roman ya English akshar bilkul nahi. Phone par baat kar rahe hain: ek ya do chhote vakya. Koi markdown, koi list, koi emoji nahi.",
+  lang:  store.get("v_lang")  || "hi-IN",
+  voice: store.get("v_voice") || "",
+  hands: store.get("v_hands") !== "0",
+  chunk: store.get("v_chunk") !== "0"
+};
+
+/* ---------- theme ---------- */
+const SUN = "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4";
+const MOON = "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z";
+function applyTheme(t){
+  document.documentElement.setAttribute("data-theme", t);
+  $("themeIcon").setAttribute("d", t === "dark" ? MOON : SUN);
+  store.set("v_theme", t);
+}
+applyTheme(store.get("v_theme") || "dark");
+$("themeBtn").onclick = () => applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
+
+/* ---------- tabs ---------- */
+function showTab(which){
+  const isChat = which === "chat";
+  $("tab-chat").setAttribute("aria-selected", isChat);
+  $("tab-pipe").setAttribute("aria-selected", !isChat);
+  if (window.matchMedia("(min-width:900px)").matches) return;
+  $("chat").hidden = !isChat;
+  $("pipe").hidden = isChat;
+}
+$("tab-chat").onclick = () => showTab("chat");
+$("tab-pipe").onclick = () => showTab("pipe");
+window.addEventListener("resize", () => {
+  if (window.matchMedia("(min-width:900px)").matches){ $("chat").hidden = false; $("pipe").hidden = false; }
+  else showTab($("tab-chat").getAttribute("aria-selected") === "true" ? "chat" : "pipe");
+});
+
+/* ---------- toast ---------- */
+let toastT;
+function toast(msg){
+  const el = $("toast"); el.textContent = msg; el.classList.add("show");
+  clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("show"), 2600);
+}
+
+/* ---------- stage strip ---------- */
+const stages = { listen:"st-listen", stt:"st-stt", llm:"st-llm", tts:"st-tts" };
+function stage(name, on){ $(stages[name]).setAttribute("data-on", on ? "1" : "0"); }
+function stageMs(name, ms){
+  const el = $("ms-" + name);
+  el.textContent = ms == null ? "--" : Math.round(ms) + "ms";
+  $(stages[name]).setAttribute("data-done", ms == null ? "0" : "1");
+}
+function resetStages(){
+  Object.keys(stages).forEach(k => { stage(k,false); stageMs(k,null); });
+}
+
+/* ---------- meter ---------- */
+const meterBars = [...$("meter").querySelectorAll("i")];
+let meterRaf = null;
+function meterOn(){
+  if (meterRaf) return;
+  const step = () => {
+    meterBars.forEach((b,i) => {
+      const h = 18 + Math.abs(Math.sin(now()/(140 + i*40)) * 70) * (0.5 + Math.random()*0.5);
+      b.style.height = h + "%";
+    });
+    meterRaf = requestAnimationFrame(step);
+  };
+  step();
+}
+function meterOff(){
+  if (meterRaf) cancelAnimationFrame(meterRaf);
+  meterRaf = null;
+  meterBars.forEach(b => b.style.height = "15%");
+}
+
+/* ---------- chat rendering ---------- */
+const history = [];
+let interimEl = null, streamEl = null;
+
+function addMsg(who, text, cls){
+  $("chatEmpty").style.display = "none";
+  const wrap = document.createElement("div");
+  wrap.className = "msg " + (who === "you" ? "you" : "bot");
+  const w = document.createElement("div");
+  w.className = "who"; w.textContent = who === "you" ? "Aap" : "Agent";
+  const b = document.createElement("div");
+  b.className = "bubble" + (cls ? " " + cls : "");
+  b.textContent = text;
+  wrap.append(w,b);
+  $("chat").appendChild(wrap);
+  $("chat").scrollTop = $("chat").scrollHeight;
+  return b;
+}
+function clearInterim(){ if (interimEl){ interimEl.parentElement.remove(); interimEl = null; } }
+
+/* ---------- pipeline cards ---------- */
+let turnNo = 0;
+function renderTurn(t){
+  $("pipeEmpty").style.display = "none";
+  const total = t.total;
+  const cls = total < 1500 ? "ok" : total < 3000 ? "warn" : "bad";
+  const seg = [
+    { k:"stt",  c:"var(--listen)", v:t.sttMs },
+    { k:"llm",  c:"var(--think)",  v:t.ttftMs },
+    { k:"tts",  c:"var(--speak)",  v:t.ttsMs }
+  ];
+  const sum = seg.reduce((a,s) => a + Math.max(s.v,0), 0) || 1;
+
+  const card = document.createElement("div");
+  card.className = "turn";
+  card.innerHTML =
+    '<div class="turn-head"><span class="turn-no">TURN ' + String(t.no).padStart(2,"0") + '</span>' +
+    '<span class="total ' + cls + '">' + Math.round(total) + 'ms to first audio</span></div>' +
+    '<div class="turn-body">' +
+      '<div class="row"><span class="k">Input</span><span class="t">' + esc(t.input) + '</span></div>' +
+      '<div class="row"><span class="k">Sunna</span><span class="v">' + Math.round(t.sttMs) + ' ms</span><span class="t">' + (t.source === "voice" ? "speech to text" : "typed") + '</span></div>' +
+      '<div class="row"><span class="k">LLM ttft</span><span class="v">' + Math.round(t.ttftMs) + ' ms</span><span class="t">' + esc(t.model) + '</span></div>' +
+      '<div class="row"><span class="k">LLM poora</span><span class="v">' + Math.round(t.llmMs) + ' ms</span><span class="t">' + t.chars + ' chars</span></div>' +
+      '<div class="row"><span class="k">TTS start</span><span class="v">' + (t.ttsMs < 0 ? "FAILED" : Math.round(t.ttsMs) + ' ms') + '</span><span class="t">' + esc(t.voice || "default") + '</span></div>' +
+      '<div class="row"><span class="k">Output</span><span class="t">' + esc(t.output) + '</span></div>' +
+      '<div class="bar">' + seg.map(s => '<i style="width:' + (Math.max(s.v,0)/sum*100) + '%;background:' + s.c + '"></i>').join("") + '</div>' +
+      '<div class="legend">' +
+        '<span><i class="sw" style="background:var(--listen)"></i>STT</span>' +
+        '<span><i class="sw" style="background:var(--think)"></i>LLM</span>' +
+        '<span><i class="sw" style="background:var(--speak)"></i>TTS</span>' +
+      '</div>' +
+    '</div>';
+  $("pipe").prepend(card);
+}
+function esc(s){ const d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
+
+/* ---------- capture -> server STT (Gemma) ---------- */
+const SR = true;                       // server-side, always available
+let listening = false, gotFinal = false;
+let tListenStart = 0, tFirstPartial = 0;
+let acx = null, micStream = null, micNode = null, micProc = null;
+let pcmChunks = [], silentMs = 0, voicedMs = 0, vadTimer = null;
+
+const SILENCE_STOP_MS = 700;   // hang-up delay after the caller stops
+const MIN_VOICED_MS   = 250;   // ignore taps and door slams
+const RMS_GATE        = 0.012;
+
+function setMic(state){
+  $("mic").dataset.state = state;
+  $("dot").classList.toggle("live", state !== "idle");
+}
+
+function pcmToWav(chunks, sr){
+  let n = 0; chunks.forEach(c => n += c.length);
+  const buf = new ArrayBuffer(44 + n*2), v = new DataView(buf);
+  const w = (o,s) => { for (let i=0;i<s.length;i++) v.setUint8(o+i, s.charCodeAt(i)); };
+  w(0,"RIFF"); v.setUint32(4, 36+n*2, true); w(8,"WAVEfmt ");
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,sr,true); v.setUint32(28,sr*2,true);
+  v.setUint16(32,2,true); v.setUint16(34,16,true);
+  w(36,"data"); v.setUint32(40, n*2, true);
+  let o = 44; chunks.forEach(c => { for (let i=0;i<c.length;i++){ v.setInt16(o, c[i], true); o += 2; } });
+  return new Blob([buf], { type:"audio/wav" });
+}
+
+async function unlockAudio(){
+  // iOS only lets an AudioContext start from inside a user gesture, and a
+  // context created later is silently muted - no error, no sound. So build and
+  // unlock the playback context on the tap, not when the first reply arrives.
+  if (!playAcx) playAcx = new (window.AudioContext || window.webkitAudioContext)();
+  if (playAcx.state === "suspended"){ try { await playAcx.resume(); } catch(e){} }
+  if (!playAcx._unlocked){
+    const b = playAcx.createBuffer(1, 1, 22050);
+    const s = playAcx.createBufferSource();
+    s.buffer = b; s.connect(playAcx.destination); s.start(0);
+    playAcx._unlocked = true;
+  }
+}
+
+async function startListen(){
+  if (listening) return;
+  stopSpeaking();
+  resetStages();
+  await unlockAudio();
+  try {
+    if (!acx) acx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate:16000 });
+    if (acx.state === "suspended") await acx.resume();
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio:{ channelCount:1, echoCancellation:true, noiseSuppression:true, autoGainControl:true } });
+  } catch(e){ toast("Mic permission chahiye"); return; }
+
+  listening = true; gotFinal = false;
+  tListenStart = now(); tFirstPartial = 0;
+  pcmChunks = []; silentMs = 0; voicedMs = 0;
+  setMic("listening"); meterOn(); stage("listen", true);
+
+  micNode = acx.createMediaStreamSource(micStream);
+  micProc = acx.createScriptProcessor(2048, 1, 1);
+  micProc.onaudioprocess = e => {
+    const f = e.inputBuffer.getChannelData(0);
+    let sum = 0; const i16 = new Int16Array(f.length);
+    for (let k=0;k<f.length;k++){ const s = Math.max(-1, Math.min(1, f[k])); i16[k] = s*32767; sum += s*s; }
+    pcmChunks.push(i16);
+    const rms = Math.sqrt(sum / f.length);
+    const ms = f.length / 16000 * 1000;
+    if (rms > RMS_GATE){
+      voicedMs += ms; silentMs = 0;
+      if (!tFirstPartial){ tFirstPartial = now(); }
+    } else if (voicedMs > 0){
+      silentMs += ms;
+      if (silentMs > SILENCE_STOP_MS && voicedMs > MIN_VOICED_MS) stopListen();
+    }
+  };
+  micNode.connect(micProc); micProc.connect(acx.destination);
+}
+
+function teardownMic(){
+  try { if (micProc) micProc.disconnect(); if (micNode) micNode.disconnect(); } catch(e){}
+  if (micStream) micStream.getTracks().forEach(t => t.stop());
+  micProc = micNode = micStream = null;
+}
+
+async function stopListen(){
+  if (!listening) return;
+  listening = false;
+  teardownMic(); meterOff(); stage("listen", false);
+  const chunks = pcmChunks; pcmChunks = [];
+  if (voicedMs < MIN_VOICED_MS){ setMic("idle"); return; }
+
+  setMic("thinking");
+  const wav = pcmToWav(chunks, 16000);
+  let text = "";
+  try {
+    const r = await fetch("/stt", { method:"POST", headers:{ "Content-Type":"audio/wav" }, body: wav });
+    const j = await r.json();
+    text = (j.text || "").trim();
+  } catch(e){ toast("STT error: " + e.message); }
+
+  stageMs("listen", now() - tListenStart);
+  if (!text){ toast("Kuch samajh nahi aaya"); setMic("idle"); return; }
+  gotFinal = true;
+  handleInput(text, "voice", tListenStart, now());
+}
+
+$("mic").onclick = () => {
+  const s = $("mic").dataset.state;
+  if (s === "listening") stopListen();
+  else if (s === "speaking"){ stopSpeaking(); setMic("idle"); }
+  else if (s === "thinking"){ abortLLM(); }
+  else startListen();
+};
+
+/* ---------- TTS (OmniVoice on the VM) ---------- */
+let ttsQueue = [], ttsBusy = false, onFirstAudio = null;
+let curSrc = null, playAcx = null;
+const TTS_STEPS = 4;
+
+function loadVoices(){
+  const sel = $("cfgVoice");
+  sel.innerHTML = '<option value="omnivoice">OmniVoice (server)</option>';
+  sel.value = "omnivoice";
+}
+loadVoices();
+function pickVoice(){ return { name: "OmniVoice step=" + TTS_STEPS }; }
+
+function stopSpeaking(){
+  ttsQueue = [];
+  try { if (curSrc) curSrc.stop(); } catch(e){}
+  curSrc = null; ttsBusy = false; stage("tts", false);
+}
+
+function speak(text){
+  if (!text || !text.trim()) return;
+  ttsQueue.push(text.trim());
+  drainTTS();
+}
+
+async function drainTTS(){
+  if (ttsBusy || !ttsQueue.length) return;
+  ttsBusy = true;
+  const text = ttsQueue.shift();
+  try {
+    await unlockAudio();
+    if (playAcx.state !== "running") throw new Error("audio blocked (" + playAcx.state + ") - screen tap karke dobara try karein");
+    const r = await fetch("/tts", {
+      method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ text, lang:"hi", steps: TTS_STEPS })
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const buf = await playAcx.decodeAudioData(await r.arrayBuffer());
+    const s = playAcx.createBufferSource();
+    s.buffer = buf; s.connect(playAcx.destination);
+    curSrc = s;
+    setMic("speaking"); stage("tts", true);
+    if (onFirstAudio){ onFirstAudio(); onFirstAudio = null; }
+    await new Promise(res => { s.onended = res; s.start(); });
+  } catch(e){
+    toast("TTS error: " + e.message);
+  }
+  curSrc = null; ttsBusy = false;
+  if (ttsQueue.length) { drainTTS(); return; }
+  stage("tts", false);
+  setMic("idle");
+  if (cfg.hands) setTimeout(() => { if (!listening && $("mic").dataset.state === "idle") startListen(); }, 350);
+}
+
+/* ---------- LLM ---------- */
+let controller = null;
+function abortLLM(){ if (controller){ controller.abort(); controller = null; } setMic("idle"); stage("llm",false); }
+
+async function* demoStream(prompt){
+  const canned =
+    "Ji bilkul. Maine sun liya: " + prompt.slice(0,60) +
+    ". Ye demo mode hai, isliye jawab local se aa raha hai. Settings mein apna endpoint daal dijiye, phir asli model bolega.";
+  const words = canned.split(" ");
+  await new Promise(r => setTimeout(r, 260 + Math.random()*220));
+  for (const w of words){
+    await new Promise(r => setTimeout(r, 28 + Math.random()*45));
+    yield w + " ";
+  }
+}
+
+async function* liveStream(messages){
+  controller = new AbortController();
+  const headers = { "Content-Type":"application/json" };
+  if (cfg.key) headers["Authorization"] = "Bearer " + cfg.key;
+  const res = await fetch(cfg.url, {
+    method:"POST", headers, signal: controller.signal,
+    body: JSON.stringify({ model: cfg.model, messages, stream: true, temperature: 0.6, max_tokens: 400 })
+  });
+  if (!res.ok || !res.body) throw new Error("HTTP " + res.status);
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  while (true){
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream:true });
+    const lines = buf.split("\n");
+    buf = lines.pop();
+    for (const line of lines){
+      const s = line.trim();
+      if (!s.startsWith("data:")) continue;
+      const payload = s.slice(5).trim();
+      if (payload === "[DONE]") return;
+      try {
+        const j = JSON.parse(payload);
+        const d = j.choices && j.choices[0] && (j.choices[0].delta || j.choices[0].message);
+        if (d && d.content) yield d.content;
+      } catch(e){ /* partial json, skip */ }
+    }
+  }
+}
+
+/* ---------- main turn ---------- */
+let busy = false;
+async function handleInput(text, source, tStart, tFinalStamp){
+  if (busy) return;
+  busy = true;
+  turnNo++;
+
+  const sttMs = source === "voice" ? (tFinalStamp - tStart) : 0;
+  stageMs("stt", sttMs);
+  addMsg("you", text);
+  history.push({ role:"user", content:text });
+
+  setMic("thinking"); stage("llm",true);
+  const tSend = now();
+  let tFirstTok = 0, out = "";
+  streamEl = addMsg("bot", "");
+  const cur = document.createElement("span"); cur.className = "cursor";
+  streamEl.appendChild(cur);
+
+  let spokeBuf = "", firstAudioAt = 0;
+  onFirstAudio = () => { firstAudioAt = now(); };
+
+  try {
+    const msgs = [{ role:"system", content:cfg.sys }, ...history.slice(-10)];
+    const gen = cfg.demo ? demoStream(text) : liveStream(msgs);
+    for await (const tok of gen){
+      if (!tFirstTok){
+        tFirstTok = now();
+        stageMs("llm", tFirstTok - tSend);
+      }
+      out += tok;
+      cur.remove();
+      streamEl.textContent = out;
+      streamEl.appendChild(cur);
+      $("chat").scrollTop = $("chat").scrollHeight;
+
+      if (cfg.chunk){
+        spokeBuf += tok;
+        const m = spokeBuf.match(/^([\s\S]*?[।.!?\n])\s/);
+        if (m && m[1].trim().length > 12){
+          speak(m[1]);
+          spokeBuf = spokeBuf.slice(m[0].length);
+        }
+      }
+    }
+  } catch(err){
+    if (err.name !== "AbortError"){
+      out = out || "Backend se jawab nahi mila. Endpoint check kijiye ya demo mode on kar dijiye.";
+      streamEl.textContent = out;
+      toast("LLM error: " + err.message);
+    }
+  }
+
+  cur.remove();
+  stage("llm",false);
+  const tLLMDone = now();
+
+  const tail = cfg.chunk ? spokeBuf : out;
+  if (tail.trim()) speak(tail);
+  if (!out.trim()) { setMic("idle"); busy = false; return; }
+  history.push({ role:"assistant", content:out });
+
+  const tSpeakReq = now();
+  await new Promise(r => {
+    let n = 0;
+    const iv = setInterval(() => { if (firstAudioAt || ++n > 200){ clearInterval(iv); r(); } }, 50);
+  });
+  // firstAudioAt only gets set when playback actually starts. Without this
+  // check the poll's own ceiling was being reported as the TTS latency.
+  const ttsMs = firstAudioAt ? (firstAudioAt - tSpeakReq) : null;
+  if (ttsMs === null) toast("Awaaz nahi baji - audio playback block hua");
+  stageMs("tts", ttsMs);
+
+  renderTurn({
+    no: turnNo,
+    input: text,
+    output: out,
+    source,
+    model: cfg.demo ? "demo" : cfg.model,
+    voice: (pickVoice() || {}).name || "",
+    sttMs,
+    ttftMs: (tFirstTok || tLLMDone) - tSend,
+    llmMs: tLLMDone - tSend,
+    ttsMs: ttsMs == null ? -1 : ttsMs,
+    chars: out.length,
+    total: sttMs + ((tFirstTok || tLLMDone) - tSend) + (ttsMs || 0)
+  });
+
+  busy = false;
+}
+
+/* ---------- typed input ---------- */
+function sendTyped(){
+  const v = $("typed").value.trim();
+  if (!v) return;
+  $("typed").value = "";
+  resetStages();
+  handleInput(v, "text", now(), now());
+}
+$("sendBtn").onclick = sendTyped;
+$("typed").addEventListener("keydown", e => { if (e.key === "Enter") sendTyped(); });
+
+/* ---------- settings ---------- */
+function openSheet(){
+  $("cfgDemo").checked = cfg.demo;
+  $("cfgUrl").value = cfg.url;
+  $("cfgModel").value = cfg.model;
+  $("cfgKey").value = cfg.key;
+  $("cfgSys").value = cfg.sys;
+  $("cfgLang").value = cfg.lang;
+  $("cfgVoice").value = cfg.voice;
+  $("cfgHands").checked = cfg.hands;
+  $("cfgChunk").checked = cfg.chunk;
+  $("sheet").classList.add("open");
+}
+$("cfgBtn").onclick = openSheet;
+$("sheet").addEventListener("click", e => { if (e.target === $("sheet")) $("sheet").classList.remove("open"); });
+$("cfgSave").onclick = () => {
+  cfg.demo = $("cfgDemo").checked;
+  cfg.url = $("cfgUrl").value.trim();
+  cfg.model = $("cfgModel").value.trim();
+  cfg.key = $("cfgKey").value;
+  cfg.sys = $("cfgSys").value;
+  cfg.lang = $("cfgLang").value;
+  cfg.voice = $("cfgVoice").value;
+  cfg.hands = $("cfgHands").checked;
+  cfg.chunk = $("cfgChunk").checked;
+  store.set("v_demo", cfg.demo ? "1" : "0");
+  store.set("v_url", cfg.url);
+  store.set("v_model", cfg.model);
+  store.set("v_key", cfg.key);
+  store.set("v_sys", cfg.sys);
+  store.set("v_lang", cfg.lang);
+  store.set("v_voice", cfg.voice);
+  store.set("v_hands", cfg.hands ? "1" : "0");
+  store.set("v_chunk", cfg.chunk ? "1" : "0");
+  $("sheet").classList.remove("open");
+  toast("Saved");
+};
+
+if (window.matchMedia("(min-width:900px)").matches){ $("chat").hidden = false; $("pipe").hidden = false; }
+</script>
+</body>
+</html>

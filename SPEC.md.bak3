@@ -1,0 +1,44 @@
+# VoAIs Indic Calling Agent
+Region: asia-south1 (Mumbai) | GPU zone: asia-south1-c
+Project: hidrogen-500914 | Billing: 010D07-FF0401-07246F (enabled)
+
+## Phase Y  (pehle yahi — production target)
+- A: g4-standard-12, 1x NVIDIA RTX PRO 6000 Blackwell 96GB, no public IP.
+    IndicConformer STT  -> 8001   0.1 GB   22 Indian langs, ONNX
+    Qwen3.6-35B-A3B AWQ -> 8000  25.5 GB   brain, 3B active MoE
+    IndicF5 TTS         -> 8002   1.4 GB   11 Indian langs (gated)
+    VRAM: ~27 GB / 96 GB
+    Target latency: ~570 ms
+
+## Phase X  (Y safal hone ke baad)
+- Wahi node pe Human-1 add:
+    Human-1 (VoiceArena) -> 8003  31 GB    Hindi S2S, speech layer
+    VRAM: 27 + 31 = ~58 GB / 96 GB   (fit hai)
+    Human-1 sirf kaan+muh, dimaag Qwen hi rahega
+    Target latency: ~600 ms, par Hindi prosody behtar
+    Hindi calls pe Y vs X A/B karke decide karenge
+
+- B: e2-standard-4, public static IP.   [CHHUA NAHI — jaisa tha waisa hai]
+    Asterisk + Node orchestrator + VoAIs app.
+
+## Network
+Ek VPC, asia-south1. A private only.
+Sirf B usse baat karega, ports 8000-8003 pe.
+
+## Preflight status (verified 2026-08-30)
+  gcloud 582.0.0 / tech@mrkting.in      OK
+  billing enabled                        OK
+  compute API enabled                    OK
+  nvidia-rtx-pro-6000 in asia-south1-c   OK
+  g4-standard-6/12/24/48 = 1 GPU each    OK  (96 = 2 GPU)
+  GPUS_ALL_REGIONS = 1                   OK  (1 GPU ke liye kaafi)
+  CPUS asia-south1 = 100 (2 used)        OK
+  RTX PRO 6000 family quota = 0          BLOCKER -> request karna hai
+  PREEMPTIBLE_CPUS = 0                   spot nahi chalega (alag quota)
+
+## Hatae gaye (kyun)
+- L4 24GB          : 300 GB/s bandwidth bottleneck
+- T4 node          : alag node ki zaroorat nahi
+- Gemma-4          : Human-1/IndicConformer ASR karega, audio-input ka
+                     faayda khatam; Qwen zyada smart aur MoE se tez
+- Magpie TTS       : 12 langs me sirf Hindi Indian hai

@@ -1,0 +1,11 @@
+vllm>=0.28.0
+fastapi
+uvicorn[standard]
+soundfile
+librosa
+numpy
+onnxruntime-gpu
+requests
+transformers
+torch
+huggingface_hub[cli]

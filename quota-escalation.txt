@@ -1,0 +1,65 @@
+GCP GPU QUOTA — ESCALATION REQUEST
+==================================
+
+Project        : hidrogen-500914  (project number 700269105148)
+Organization   : 940306158677
+Billing account: 010D07-FF0401-07246F  ("iiml-credit", INR, credits-based)
+Requested by   : tech@mrkting.in
+
+WHAT WE NEED
+------------
+Quota metric : compute.googleapis.com/gpus_per_gpu_family
+Quota ID     : GPUS-PER-GPU-FAMILY-per-project-region
+gpu_family   : NVIDIA_RTX_PRO_6000        (G4 machine series)
+Region       : asia-south1  (Mumbai)
+Value needed : 1
+
+WHAT HAPPENED
+-------------
+Two requests submitted, both AUTO-DENIED within ~2 seconds:
+
+  Attempt 1   traceId 20318d82-8f3f-4aef-a0c1-1af188f73afd
+              2026-08-30 06:27:24 -> denied 06:27:26
+  Attempt 2   traceId a5feec1b-84c1-4179-b3ac-1c9323ef8b95
+              2026-08-30 06:39:45 -> denied immediately
+
+  stateDetail: "Quota request denied"
+  grantedValue: 0
+
+ROOT CAUSE (as far as we can tell)
+----------------------------------
+EVERY modern datacenter GPU family is set to 0 on this project:
+
+  NVIDIA_RTX_PRO_6000  -> 0
+  NVIDIA_B200          -> 0
+  NVIDIA_H100          -> 0
+  NVIDIA_H100_MEGA     -> 0
+  NVIDIA_H200          -> 0
+
+Only legacy families have any quota (all limit=1):
+  L4, T4, V100, P100, P4, K80
+
+This looks like an account-class restriction on the credits-based
+billing account, not a per-request justification issue. The denial is
+automated and instant, so no human is reviewing the justification.
+
+Note: zone-level quota (GPUS-PER-GPU-FAMILY-per-project-zone) is
+marked is_fixed and cannot be requested via the Cloud Quotas API at all.
+
+WHAT WE'RE ASKING
+-----------------
+Either
+  (a) whitelist project 700269105148 for NVIDIA_RTX_PRO_6000 in
+      asia-south1 (quantity 1), or
+  (b) tell us which billing account type is required, and we will
+      move the project to it.
+
+Hardware IS available in the region — nvidia-rtx-pro-6000 is listed
+in asia-south1-c. Only the project quota is blocking.
+
+USE CASE
+--------
+Indic-language voice AI inference POC. ASR + LLM + TTS served
+concurrently on one device (needs 96GB VRAM to co-locate). asia-south1
+required for in-country call latency and data residency.
+Inference only, ~20 hours for the evaluation.

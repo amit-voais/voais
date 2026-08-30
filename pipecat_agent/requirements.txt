@@ -1,0 +1,6 @@
+pipecat-ai[silero,webrtc]==1.8.1
+fastapi
+uvicorn[standard]
+aiohttp
+python-dotenv
+loguru
