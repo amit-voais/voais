@@ -187,15 +187,35 @@ guessing:
   the TTS pronounced it as English. Latin text is now transliterated before
   synthesis.
 
+### Concurrency, load-tested
+
+N callers at once, each asking a question the cache cannot answer, so every
+turn runs the full recognition → language model → synthesis path. One run per
+level. Times are measured from the moment the turn fires.
+
+| Callers at once | All answered | Median | Slowest |
+|---|---|---|---|
+| 1 | 1/1 | 1158 ms | 1158 ms |
+| 2 | 2/2 | 594 ms | 850 ms |
+| 3 | 3/3 | 908 ms | 2270 ms |
+| 4 | 4/4 | 1045 ms | 2670 ms |
+| 6 | 6/6 | 2842 ms | 7622 ms |
+| 8 | 8/8 | 5252 ms | 11189 ms |
+
+Every caller got an answer at every level, but the wait grows faster than the
+load. Three concurrent calls is the practical limit on one L4. Four is the
+ceiling, where the slowest caller already waits 2.7 s, and beyond that it
+collapses. The shape is consistent with speech synthesis queueing behind a
+single worker, though that has not been isolated. Each level is one run, so
+the slowest column is the worst of a handful of calls, not a percentile.
+
 ### Known limitations
 
 - **Barge-in fails on a speakerphone.** The browser's echo canceller mutes the
   microphone while the agent speaks, so an interruption never reaches the
   server. It works with earphones.
 - **Knowledge gaps remain** on questions outside the configured domain notes.
-- **Concurrency is not load-tested yet.** With the 12B model vLLM reports
-  KV-cache room for about three requests at full context. A load test was
-  blocked by a GPU stockout in the zone; its result will be added here.
+- **Three concurrent calls per GPU.** See the load test above.
 
 ### Sample call
 
