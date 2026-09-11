@@ -122,6 +122,86 @@ sides apart.
 
 Browse and download at `/recordings`.
 
+## Progress since this release
+
+The code in this repository is the earlier version — the one that measures
+~1.6 s end to end. Development has continued privately. The numbers below were
+measured on that private build, on the same single NVIDIA L4, and are published
+so the results can be checked against a real recording. **The code behind them
+is not released here.**
+
+### Measured
+
+| | This repo | Private build |
+|---|---|---|
+| TTS per clip | 870 ms | **349 ms** |
+| Caller stops → agent speaks | ~1600 ms | **~1050–1160 ms** |
+| Cached answer | ~250 ms | **31–192 ms** |
+| Language model | Gemma-4-E2B (bf16) | Gemma-4-12B (QAT int4) |
+| VRAM, whole stack | — | 21.6 of 23 GB |
+
+TTS speech quality was held constant while it got faster: an ASR round-trip on
+the same sentences scored 0.988 before and 0.990 after.
+
+### Why TTS got 2.5× faster
+
+A profiler showed a 733 ms clip spending only 325 ms doing GPU work. The rest
+was the CPU dispatching roughly 18,000 small operations to the GPU one at a
+time for a single sentence. Compiling the model fused them, and the clip landed
+at the 325 ms floor the profiler had predicted. Two other routes were measured
+and rejected: streaming (clip cost does not fall with shorter text) and
+fp8/int8 quantisation (both were *slower*, 412 and 536 ms, on a model this
+small).
+
+### Why the larger model
+
+Sixteen questions, same prompt, one run each:
+
+| | Knowledge outside the prompt | Answers that slipped into Roman script | Tokens/s |
+|---|---|---|---|
+| Gemma-4-E2B | 2/6 | 1/16 | 45.5 |
+| Gemma-4-E4B int4 | 3/6 | 5/16 | 53.5 |
+| **Gemma-4-12B int4** | **4/6** | **0/16** | 26.5 |
+
+The 12B model costs ~112 ms end to end and never once left Devanagari, which is
+the defect callers reported hearing.
+
+### What made it stable
+
+Each of these was found by recording a real call and measuring it, not by
+guessing:
+
+- **Callers cut off mid-word.** A 60 ms shortcut fired on every hesitation.
+  Turns now fire from the 220 ms detector.
+- **The greeting came out garbled** from cache while a fresh synthesis was
+  clean. Clips had been baked from a different voice and cached under a name
+  that looked right. The cache now keys on the voice the TTS server is actually
+  serving.
+- **No reply at all.** One caller's browser delivered speech at a tenth of the
+  normal level, under the voice gate, so no turn ever fired. The server now
+  normalises a quiet microphone.
+- **Answering a question nobody asked.** A caller describing his company's
+  services triggered the cached "what services do you offer" reply. Cached
+  answers now require the caller to be asking.
+- **English read as English.** When the model wrote Hinglish in Roman script
+  the TTS pronounced it as English. Latin text is now transliterated before
+  synthesis.
+
+### Known limitations
+
+- **Barge-in fails on a speakerphone.** The browser's echo canceller mutes the
+  microphone while the agent speaks, so an interruption never reaches the
+  server. It works with earphones.
+- **Knowledge gaps remain** on questions outside the configured domain notes.
+- **Concurrency is not load-tested yet.** With the 12B model vLLM reports
+  KV-cache room for about three requests at full context. A load test was
+  blocked by a GPU stockout in the zone; its result will be added here.
+
+### Sample call
+
+[`samples/v7-call.mp3`](samples/v7-call.mp3) — a real 3-minute Hindi call on the
+private build. Left channel is the caller, right channel is the agent.
+
 ## Licence
 
 Apache-2.0. The models and frameworks this is built on, their licences, and the
