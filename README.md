@@ -4,9 +4,15 @@ A real-time voice agent for Indian languages that runs entirely on one GPU.
 Caller audio never leaves the machine: speech recognition, the language model
 and speech synthesis are all local.
 
-Measured end to end at **~1.6 s** on a single NVIDIA L4, of which TTS is 870 ms.
-Every number below was measured, not estimated — see [FINDINGS.md](FINDINGS.md),
-which also lists the assumptions that turned out to be wrong.
+The code in this repository measures **~1.6 s** end to end on a single NVIDIA L4,
+of which TTS is 870 ms. Development has continued privately since, and that build
+measures **~1.05 s** with TTS at 349 ms — those numbers, a concurrency load test
+and a sample call are in
+[Progress since this release](#progress-since-this-release).
+
+Every number in this README was measured, not estimated — see
+[FINDINGS.md](FINDINGS.md), which also lists the assumptions that turned out to
+be wrong.
 
 ## How a turn works
 
