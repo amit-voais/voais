@@ -1,7 +1,7 @@
 """OmniVoice TTS on :8002, drop-in for the IndicF5 server.
 
 Same HTTP contract as tts_fast.py (/health, POST /synthesize with
-{text, language, nfe}) so the pipecat TTS service needs no change. `nfe` maps
+{text, language, nfe}) so the experimental agent's TTS service needs no change. `nfe` maps
 to OmniVoice's `num_step` - the diffusion step count, which is the only real
 latency lever. Measured on an L4, one Hindi sentence:
 
