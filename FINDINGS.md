@@ -159,7 +159,7 @@ own venv (`~/.venv-parler`) and `tts_wav` logs non-200 responses.
 
 ## Open
 2. Cached phrases are not wired into stream_server.py. They exist in
-   pipecat_agent/bot.py and would hide most of the 866 ms.
+   agent_experiment/bot.py and would hide most of the 866 ms.
 3. Streaming STT: IndicConformer is RNNT and can emit partials, but the current
    server still transcribes the whole utterance after the turn ends.
 4. Gemma's Indic ASR was never A/B'd against IndicConformer. IndicConformer is
